@@ -20,7 +20,7 @@ function Layout() {
   if (isLoading) return <FullScreenLoader />;
 
   const getDefaultRoute = () => {
-    if (role === "Admin") return "/Admin";
+    if (role === "admin") return "/admin";
     return "/cashier";
   };
 

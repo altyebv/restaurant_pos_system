@@ -1,42 +1,37 @@
+// migrate-database.js
+// Run this once to update your database schema
 const Database = require("better-sqlite3");
-const config = require("./config");
 const path = require("path");
 const fs = require("fs");
 
-let db = null;
+const dbPath = "./data/pos.db";
 
-const initDB = () => {
-    try {
-        // Ensure data directory exists
-        const dbDir = path.dirname(config.databasePath);
-        if (!fs.existsSync(dbDir)) {
-            fs.mkdirSync(dbDir, { recursive: true });
-        }
+console.log("🔄 Starting database migration...");
 
-        // Create/open database
-        db = new Database(config.databasePath, {
-            verbose: config.nodeEnv === "development" ? console.log : null
-        });
+// Backup existing database if it exists
+if (fs.existsSync(dbPath)) {
+    const backupPath = `./data/pos.db.backup.${Date.now()}`;
+    fs.copyFileSync(dbPath, backupPath);
+    console.log(`📦 Backup created: ${backupPath}`);
+}
 
-        // Enable foreign keys
-        db.pragma("foreign_keys = ON");
+const db = new Database(dbPath);
 
-        // Create tables
-        createTables();
+try {
+    // Drop all existing tables
+    console.log("🗑️  Dropping old tables...");
+    db.exec(`DROP TABLE IF EXISTS payments`);
+    db.exec(`DROP TABLE IF EXISTS orders`);
+    db.exec(`DROP TABLE IF EXISTS sessions`);
+    db.exec(`DROP TABLE IF EXISTS menus`);
+    db.exec(`DROP TABLE IF EXISTS users`);
 
-        console.log(`✅ SQLite Connected: ${config.databasePath}`);
-        return db;
-    } catch (error) {
-        console.log(`❌ Database connection failed: ${error.message}`);
-        process.exit(1);
-    }
-};
-
-const createTables = () => {
+    // Create tables with correct schema
+    console.log("🏗️  Creating new tables...");
+    
     // Users table
-// Users table
     db.exec(`
-        CREATE TABLE IF NOT EXISTS users (
+        CREATE TABLE users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             email TEXT UNIQUE NOT NULL,
@@ -52,7 +47,7 @@ const createTables = () => {
 
     // Sessions table
     db.exec(`
-        CREATE TABLE IF NOT EXISTS sessions (
+        CREATE TABLE sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             cashier_id INTEGER NOT NULL,
             startedAt TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -77,7 +72,7 @@ const createTables = () => {
 
     // Menus table
     db.exec(`
-        CREATE TABLE IF NOT EXISTS menus (
+        CREATE TABLE menus (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             category TEXT NOT NULL,
@@ -92,7 +87,7 @@ const createTables = () => {
 
     // Orders table
     db.exec(`
-        CREATE TABLE IF NOT EXISTS orders (
+        CREATE TABLE orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             orderNumber TEXT UNIQUE NOT NULL,
             items TEXT NOT NULL,
@@ -120,7 +115,7 @@ const createTables = () => {
 
     // Payments table
     db.exec(`
-        CREATE TABLE IF NOT EXISTS payments (
+        CREATE TABLE payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             order_id INTEGER NOT NULL,
             session_id INTEGER,
@@ -136,32 +131,10 @@ const createTables = () => {
         )
     `);
 
-    // Create indexes for better query performance
+    // Create indexes
+    console.log("📊 Creating indexes...");
     db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_orders_orderNumber ON orders(orderNumber);
-        CREATE INDEX IF NOT EXISTS idx_orders_session ON orders(session_id);
-        CREATE INDEX IF NOT EXISTS idx_orders_cashier ON orders(cashier_id);
-        CREATE INDEX IF NOT EXISTS idx_orders_createdAt ON orders(createdAt DESC);
-        CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
-        CREATE INDEX IF NOT EXISTS idx_sessions_cashier ON sessions(cashier_id);
-        CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
-        CREATE INDEX IF NOT EXISTS idx_payments_order ON payments(order_id);
-        CREATE INDEX IF NOT EXISTS idx_payments_session ON payments(session_id);
-    `);
-};
-
-const getDB = () => {
-    if (!db) {
-        throw new Error("Database not initialized. Call initDB() first.");
-    }
-    return db;
-};
-
-const closeDB = () => {
-    if (db) {
-        db.close();
-        console.log("🔒 Database connection closed");
-    }
-};
-
-module.exports = { initDB, getDB, closeDB };
+        CREATE INDEX idx_orders_orderNumber ON orders(orderNumber);
+        CREATE INDEX idx_orders_session ON orders(session_id);
+        CREATE INDEX idx_orders_cashier ON orders(cashier_id);
+        CREATE

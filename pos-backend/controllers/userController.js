@@ -1,49 +1,51 @@
-// userController.js
 const createHttpError = require("http-errors");
 const User = require("../models/userModel");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const config = require("../config/config");
 const Session = require("../models/sessionModel");
+const Order = require("../models/orderModel");
 
 const register = async (req, res, next) => {
     try {
-        const { name, phone, email, password, role, cashierCode } = req.body; // Add cashierCode
+        const { name, phone, email, password, role, cashierCode } = req.body;
 
-        if(!name || !phone || !email || !password || !role || !cashierCode){ // Add cashierCode check
+        if (!name || !phone || !email || !password || !role || !cashierCode) {
             const error = createHttpError(400, "All fields are required!");
             return next(error);
         }
 
-        const isUserPresent = await User.findOne({email});
-        if(isUserPresent){
+        const isUserPresent = User.findOne({ email });
+        if (isUserPresent) {
             const error = createHttpError(400, "User already exist!");
             return next(error);
         }
 
         // Check if cashierCode already exists
-        const codeExists = await User.findOne({cashierCode: cashierCode.toUpperCase()});
-        if(codeExists){
+        const codeExists = User.findOne({ cashierCode: cashierCode.toUpperCase() });
+        if (codeExists) {
             const error = createHttpError(400, "Cashier code already in use!");
             return next(error);
         }
 
-        const user = { name, phone, email, password, role, cashierCode: cashierCode.toUpperCase() }; // Add cashierCode
-        const newUser = User(user);
-        await newUser.save();
+        const newUser = await User.create({ name, phone, email, password, role, cashierCode });
 
-        res.status(201).json({success: true, message: "New user created!", data: newUser});
+        // Remove password from response
+        const { password: _, ...userWithoutPassword } = newUser;
+
+        res.status(201).json({ 
+            success: true, 
+            message: "New user created!", 
+            data: userWithoutPassword 
+        });
 
     } catch (error) {
         next(error);
     }
-}
-
+};
 
 const login = async (req, res, next) => {
-
     try {
-
         const { email, password } = req.body;
 
         if (!email || !password) {
@@ -51,7 +53,7 @@ const login = async (req, res, next) => {
             return next(error);
         }
 
-        const isUserPresent = await User.findOne({ email });
+        const isUserPresent = User.findOne({ email });
         if (!isUserPresent) {
             const error = createHttpError(401, "Invalid Credentials");
             return next(error);
@@ -63,13 +65,12 @@ const login = async (req, res, next) => {
             return next(error);
         }
 
-
         const jwtSecret = config.accessTokenSecret || process.env.JWT_SECRET || "someSuperRandomString123!@#";
         if (!config.accessTokenSecret || !process.env.JWT_SECRET) {
             console.warn("⚠️  JWT secret not provided in environment; falling back to an internal default. Set `JWT_SECRET` in your .env for production.");
         }
 
-        const accessToken = jwt.sign({ _id: isUserPresent._id }, jwtSecret, {
+        const accessToken = jwt.sign({ id: isUserPresent.id }, jwtSecret, {
             expiresIn: '1d'
         });
 
@@ -78,100 +79,133 @@ const login = async (req, res, next) => {
             httpOnly: true,
             sameSite: 'none',
             secure: true
-        })
+        });
 
-        // Create or reuse an open session for this user so the session starts immediately on login
+        // Create or reuse an open session for this user
         try {
-            // don't create duplicate open sessions
-            let session = await Session.findOne({ cashier: isUserPresent._id, status: 'open' }).sort({ startedAt: -1 });
+            let session = Session.findOne({ cashier_id: isUserPresent.id, status: 'active' });
+            
             if (!session) {
-                // fetch last closed session endBalance as default starting balance
-                const last = await Session.findOne({ cashier: isUserPresent._id, status: 'closed' }).sort({ endedAt: -1 });
+                // Fetch last closed session endBalance as default starting balance
+                const last = Session.findOne({ cashier_id: isUserPresent.id, status: 'closed' });
                 let defaultStart = 0;
-                if (last && typeof last.endBalance === 'number') defaultStart = last.endBalance;
-                session = new Session({ cashier: isUserPresent._id, startingBalance: defaultStart });
-                // Add an operation to mark session open on login
-                session.operations.push({ type: 'session_open', details: { startingBalance: defaultStart }, createdBy: isUserPresent._id });
-                await session.save();
-            }
-            else {
-                // If we found an open session, record the login event as an operation in the session
+                if (last && typeof last.endBalance === 'number') {
+                    defaultStart = last.endBalance;
+                }
+
+                const operations = [{
+                    type: 'session_open',
+                    details: { startingBalance: defaultStart },
+                    createdAt: new Date().toISOString(),
+                    createdBy: isUserPresent.id
+                }];
+
+                session = Session.create({
+                    cashier: isUserPresent.id,
+                    startingBalance: defaultStart,
+                    operations
+                });
+            } else {
+                // Record login event in existing session
                 try {
-                    session.operations.push({ type: 'user_login', createdBy: isUserPresent._id });
-                    await session.save();
+                    const operations = [...session.operations];
+                    operations.push({
+                        type: 'user_login',
+                        createdAt: new Date().toISOString(),
+                        createdBy: isUserPresent.id
+                    });
+                    Session.update(session.id, { operations });
                 } catch (opErr) {
                     console.warn('Failed to append user_login op to existing session', opErr.message || opErr);
                 }
             }
 
+            // Remove password from user object
+            const { password: _, ...userWithoutPassword } = isUserPresent;
+
             res.status(200).json({
-                success: true, message: "User login successfully!",
-                data: { user: isUserPresent, session }
+                success: true,
+                message: "User login successfully!",
+                data: { user: userWithoutPassword, session }
             });
         } catch (sessionError) {
             console.error("Failed to create/open session during login:", sessionError);
-            // We don't want the whole login to fail if session creation fails, still return login success
+            
+            // Remove password from user object
+            const { password: _, ...userWithoutPassword } = isUserPresent;
+
             res.status(200).json({
-                success: true, message: "User login successfully! (session not created)",
-                data: { user: isUserPresent }
+                success: true,
+                message: "User login successfully! (session not created)",
+                data: { user: userWithoutPassword }
             });
         }
 
-
     } catch (error) {
         next(error);
     }
-
-}
+};
 
 const getUserData = async (req, res, next) => {
     try {
-
-        const user = await User.findById(req.user._id);
+        const user = User.findByIdSafe(req.user.id);
         res.status(200).json({ success: true, data: user });
-
     } catch (error) {
         next(error);
     }
-}
+};
 
 const logout = async (req, res, next) => {
     try {
         // Try to find an open session for the user and close it
         try {
-            const cashierId = req.user._id;
-            let session = await Session.findOne({ cashier: cashierId, status: 'open' }).sort({ startedAt: -1 });
+            const cashierId = req.user.id;
+            let session = Session.findOne({ cashier_id: cashierId, status: 'active' });
+            
             if (session) {
-                // compute totalSales from orders associated with the session
-                const orderIds = (session.orders || []);
+                // Compute totalSales from orders associated with the session
+                const orders = Order.findAll({ session_id: session.id });
+                
                 let totalSales = 0;
-                if (orderIds.length > 0) {
-                    const mongoose = require('mongoose');
-                    const Order = require('../models/orderModel');
-                    const agg = await Order.aggregate([
-                        { $match: { _id: { $in: orderIds.map(id => mongoose.Types.ObjectId(id)) } } },
-                        { $group: { _id: null, total: { $sum: "$bills.totalWithTax" } } }
-                    ]);
-                    totalSales = (agg[0] && agg[0].total) || 0;
+                let totalCashCollected = 0;
+                
+                orders.forEach(order => {
+                    const orderTotal = order.bills.totalWithTax || 0;
+                    totalSales += orderTotal;
+                    if (order.paymentMethod === 'cash') {
+                        totalCashCollected += orderTotal;
+                    }
+                });
+
+                // Use existing totalCashCollected if present
+                if (typeof session.totalCashCollected === 'number' && !isNaN(session.totalCashCollected)) {
+                    totalCashCollected = session.totalCashCollected;
                 }
 
-                // compute totalExpenses already on session
                 const totalExpenses = Number(session.totalExpenses || 0);
-                // Use existing totalCashCollected if present, otherwise assume equals totalSales
-                if (typeof session.totalCashCollected !== 'number' || isNaN(session.totalCashCollected)) {
-                    session.totalCashCollected = totalSales;
-                }
+                const endBalance = Number(session.startingBalance || 0) + totalCashCollected - totalExpenses;
 
-                session.totalSales = totalSales;
-                session.endBalance = Number(session.startingBalance || 0) + Number(session.totalCashCollected || 0) - Number(totalExpenses || 0);
-                session.endedAt = new Date();
-                session.status = 'closed';
-                session.operations.push({ type: 'session_closed', details: { totalSales, totalCashCollected: session.totalCashCollected, totalExpenses }, createdBy: cashierId });
-                await session.save();
+                // Add closing operation
+                const operations = [...session.operations];
+                operations.push({
+                    type: 'session_closed',
+                    details: { totalSales, totalCashCollected, totalExpenses },
+                    createdAt: new Date().toISOString(),
+                    createdBy: cashierId
+                });
+
+                Session.update(session.id, {
+                    totalSales,
+                    totalCashCollected,
+                    totalExpenses,
+                    endBalance,
+                    endedAt: new Date().toISOString(),
+                    status: 'closed',
+                    operations
+                });
             }
         } catch (sessionErr) {
-            // Log and proceed to logout anyway
-            console.warn('Failed to close session during logout for user', req.user && req.user._id, sessionErr.message || sessionErr);
+            console.warn('Failed to close session during logout for user', req.user && req.user.id, sessionErr.message || sessionErr);
         }
 
         res.clearCookie('accessToken');
@@ -180,25 +214,22 @@ const logout = async (req, res, next) => {
     } catch (error) {
         next(error);
     }
-}
+};
 
-
-// Get all users (managers only)
 const getAllUsers = async (req, res, next) => {
     try {
         // Only managers can view all users
-        if (req.user.role === 'admin') {
+        if (req.user.role !== 'manager') {
             return next(createHttpError(403, "Access denied. Managers only."));
         }
 
-        const users = await User.find().select('-password').sort({ createdAt: -1 });
+        const users = User.findAllSafe();
         res.status(200).json({ success: true, data: users });
     } catch (error) {
         next(error);
     }
 };
 
-// Update user
 const updateUser = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -209,30 +240,34 @@ const updateUser = async (req, res, next) => {
             return next(createHttpError(403, "Access denied. Managers only."));
         }
 
-        const user = await User.findById(id);
+        const user = User.findById(Number(id));
         if (!user) {
             return next(createHttpError(404, "User not found"));
         }
 
-        // Update fields
-        if (name) user.name = name;
-        if (email) user.email = email;
-        if (phone) user.phone = phone;
-        if (role) user.role = role;
-        if (cashierCode) user.cashierCode = cashierCode;
-        if (password) user.password = password; // Will be hashed by pre-save hook
+        // Build updates object
+        const updates = {};
+        if (name) updates.name = name;
+        if (email) updates.email = email;
+        if (phone) updates.phone = phone;
+        if (role) updates.role = role;
+        if (cashierCode) updates.cashierCode = cashierCode;
+        if (password) updates.password = password;
 
-        await user.save();
+        await User.update(Number(id), updates);
 
         // Return user without password
-        const updatedUser = await User.findById(id).select('-password');
-        res.status(200).json({ success: true, message: "User updated successfully", data: updatedUser });
+        const updatedUser = User.findByIdSafe(Number(id));
+        res.status(200).json({ 
+            success: true, 
+            message: "User updated successfully", 
+            data: updatedUser 
+        });
     } catch (error) {
         next(error);
     }
 };
 
-// Delete user
 const deleteUser = async (req, res, next) => {
     try {
         const { id } = req.params;
@@ -243,12 +278,12 @@ const deleteUser = async (req, res, next) => {
         }
 
         // Prevent deleting yourself
-        if (req.user._id.toString() === id) {
+        if (req.user.id === Number(id)) {
             return next(createHttpError(400, "You cannot delete your own account"));
         }
 
-        const user = await User.findByIdAndDelete(id);
-        if (!user) {
+        const deleted = User.delete(Number(id));
+        if (!deleted) {
             return next(createHttpError(404, "User not found"));
         }
 
@@ -258,7 +293,6 @@ const deleteUser = async (req, res, next) => {
     }
 };
 
-// Update the module.exports at the bottom:
 module.exports = {
     register,
     login,
@@ -268,7 +302,3 @@ module.exports = {
     updateUser,
     deleteUser
 };
-
-
-
-

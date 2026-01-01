@@ -29,11 +29,34 @@ const Login = () => {
         onSuccess: (res) => {
           const { data } = res;
           console.log(data);
-          // The backend now returns { user, session } under data.data
+          
+          // The backend returns { user, session } under data.data
           const user = data?.data?.user || data?.data;
-          const { _id, name, email, phone, role } = user;
-          dispatch(setUser({ _id, name, email, phone, role }));
-          navigate("/");
+          
+          // FIXED: Backend now uses 'id' not '_id'
+          const { id, name, email, phone, role, cashierCode } = user;
+          
+          // Store with both id and _id for compatibility
+          dispatch(setUser({ 
+            id, 
+            _id: id, // For compatibility with components that still use _id
+            name, 
+            email, 
+            phone, 
+            role,
+            cashierCode 
+          }));
+          
+          // FIXED: Route based on role
+          if (role === 'admin' || role === 'manager') {
+            navigate("/admin"); // or wherever your admin dashboard is
+          } else if (role === 'cashier') {
+            navigate("/"); // cashier screen
+          } else {
+            navigate("/"); // default fallback
+          }
+          
+          enqueueSnackbar(`مرحباً ${name}!`, { variant: "success" });
       },
       onError: (error) => {
         const { response } = error;

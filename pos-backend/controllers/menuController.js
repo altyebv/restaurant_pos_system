@@ -1,43 +1,53 @@
-// menuController.js
 const Menu = require('../models/menuModel');
 
 exports.getMenus = async (req, res, next) => {
   try {
-    const menus = await Menu.find({});
+    const menus = Menu.findAll({});
     res.status(200).json({ success: true, data: menus });
   } catch (err) {
     next(err);
   }
 };
-// menuController.js
+
 exports.updateItem = async (req, res, next) => {
   try {
     const { menuId, itemId } = req.params;
     const { name, price, image } = req.body;
     
-    const menu = await Menu.findById(menuId);
+    const menu = Menu.findById(Number(menuId));
     if (!menu) return res.status(404).json({ success: false, message: 'Category not found' });
     
-    const itemIndex = menu.items.findIndex(it => String(it.id) === String(itemId));
+    const items = menu.items || [];
+    const itemIndex = items.findIndex(it => String(it.id) === String(itemId));
     if (itemIndex === -1) return res.status(404).json({ success: false, message: 'Item not found' });
     
-    menu.items[itemIndex] = { ...menu.items[itemIndex], name, price, image };
-    await menu.save();
+    items[itemIndex] = { ...items[itemIndex], name, price, image };
+    Menu.update(Number(menuId), { items });
     
-    res.status(200).json({ success: true, data: menu.items[itemIndex] });
+    res.status(200).json({ success: true, data: items[itemIndex] });
   } catch (err) {
     next(err);
   }
 };
+
 exports.addCategory = async (req, res, next) => {
   try {
-    const { name } = req.body;
+    const { name, bgColor, icon, imageUrl } = req.body;
     if (!name) return res.status(400).json({ success: false, message: 'Name is required' });
 
-    // create a menu group for this category
+    // Create a menu group for this category
     const id = Date.now();
-    const menu = new Menu({ id, name, items: [] });
-    await menu.save();
+    const menu = Menu.create({ 
+      id, 
+      name, 
+      items: [],
+      category: 'category',
+      price: 0,
+      bgColor,
+      icon,
+      imageUrl
+    });
+    
     res.status(201).json({ success: true, data: menu });
   } catch (err) {
     next(err);
@@ -46,21 +56,38 @@ exports.addCategory = async (req, res, next) => {
 
 exports.addItem = async (req, res, next) => {
   try {
-    const { name, price, category } = req.body;
+    const { name, price, category, image, imageUrl } = req.body;
     if (!name || price == null) return res.status(400).json({ success: false, message: 'Name and price are required' });
 
-    let menu = await Menu.findOne({ name: category });
+    let menu = Menu.findOne({ name: category });
+    
     if (!menu) {
-      // create category/menu if not found
-      menu = new Menu({ id: Date.now(), name: category || 'Uncategorized', items: [] });
+      // Create category/menu if not found
+      menu = Menu.create({ 
+        id: Date.now(), 
+        name: category || 'Uncategorized', 
+        items: [],
+        category: 'category',
+        price: 0
+      });
     }
 
-    // create an item id (ensure uniqueness inside menu)
+    // Create an item id (ensure uniqueness inside menu)
     const itemId = Date.now() % 1000000;
-    const newItem = { id: itemId, name, price, category };
-    menu.items.push(newItem);
-    await menu.save();
-
+    const newItem = { 
+      id: itemId, 
+      name, 
+      price, 
+      category,
+      image: image || imageUrl || null,
+      imageUrl: image || imageUrl || null
+    };
+    
+    const items = menu.items || [];
+    items.push(newItem);
+    
+    Menu.update(menu.id, { items });
+    
     res.status(201).json({ success: true, data: newItem });
   } catch (err) {
     next(err);
@@ -70,9 +97,11 @@ exports.addItem = async (req, res, next) => {
 exports.deleteCategory = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const deleted = await Menu.findByIdAndDelete(id);
+    const deleted = Menu.delete(Number(id));
+    
     if (!deleted) return res.status(404).json({ success: false, message: 'Category not found' });
-    res.status(200).json({ success: true, data: deleted });
+    
+    res.status(200).json({ success: true, data: { id } });
   } catch (err) {
     next(err);
   }
@@ -81,16 +110,21 @@ exports.deleteCategory = async (req, res, next) => {
 exports.deleteItem = async (req, res, next) => {
   try {
     const { menuId, itemId } = req.params;
-    const menu = await Menu.findById(menuId);
+    const menu = Menu.findById(Number(menuId));
+    
     if (!menu) return res.status(404).json({ success: false, message: 'Category not found' });
 
-    const beforeCount = menu.items.length;
-    menu.items = menu.items.filter((it) => String(it.id) !== String(itemId));
-    if (menu.items.length === beforeCount) {
+    const items = menu.items || [];
+    const beforeCount = items.length;
+    const filteredItems = items.filter((it) => String(it.id) !== String(itemId));
+    
+    if (filteredItems.length === beforeCount) {
       return res.status(404).json({ success: false, message: 'Item not found' });
     }
-    await menu.save();
-    res.status(200).json({ success: true, data: menu });
+    
+    const updated = Menu.update(Number(menuId), { items: filteredItems });
+    
+    res.status(200).json({ success: true, data: updated });
   } catch (err) {
     next(err);
   }
