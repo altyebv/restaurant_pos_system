@@ -238,9 +238,9 @@ const searchOrder = async (req, res, next) => {
     }
 
     // Permission check: only manager or order creator can view
-    if (req.user.role !== 'manager' && order.cashier !== req.user.id) {
-      return next(createHttpError(403, "You can only view your own orders"));
-    }
+    // if (req.user.role !== 'manager' && order.cashier !== req.user.id) {
+    //   return next(createHttpError(403, "You can only view your own orders"));
+    // }
 
     res.status(200).json({ success: true, data: order });
   } catch (error) {

@@ -63,20 +63,15 @@ class Menu {
 
     static findAll(filters = {}) {
         const db = getDB();
-        let query = "SELECT * FROM menus WHERE 1=1";
+        let query = "SELECT * FROM menus WHERE category = 'category'"; // Only get categories
         const params = [];
-
-        if (filters.category) {
-            query += " AND category = ?";
-            params.push(filters.category);
-        }
 
         if (filters.isAvailable !== undefined) {
             query += " AND isAvailable = ?";
             params.push(filters.isAvailable ? 1 : 0);
         }
 
-        query += " ORDER BY category, name";
+        query += " ORDER BY id";
 
         const stmt = db.prepare(query);
         const menus = stmt.all(...params);

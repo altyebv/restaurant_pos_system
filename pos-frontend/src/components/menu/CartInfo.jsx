@@ -47,7 +47,7 @@ const CartInfo = ({ onShowHistory, isEditingOrder, onCancelEdit }) => {
     <>
       <div className="px-4 py-2 h-[380px] flex flex-col" dir="rtl">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-2">
           <h1 className="text-lg text-[#e4e4e4] font-semibold tracking-wide">
             {isEditingOrder ? "تعديل الطلب" : "معلومات الطلب"}
           </h1>
@@ -59,7 +59,7 @@ const CartInfo = ({ onShowHistory, isEditingOrder, onCancelEdit }) => {
                 className="text-red-500 hover:text-red-400 px-2 py-1 rounded transition-colors text-xs"
                 onClick={onCancelEdit}
               >
-                ✕ إلغاء
+                إلغاء
               </button>
             )}
             
@@ -84,7 +84,7 @@ const CartInfo = ({ onShowHistory, isEditingOrder, onCancelEdit }) => {
         {/* Cart Items - Scrollable */}
         <div
           ref={scrollRef}
-          className="mt-4 overflow-y-auto scrollbar-hide flex-1"
+          className="mt-2 overflow-y-auto scrollbar-hide flex-1"
         >
           {cartData.length === 0 ? (
             <p className="text-[#ababab] text-sm flex justify-center font-bold items-center h-full text-center">
@@ -96,10 +96,10 @@ const CartInfo = ({ onShowHistory, isEditingOrder, onCancelEdit }) => {
             cartData.map((item) => (
               <div
                 key={item.id}
-                className="bg-[#1f1f1f] rounded-lg px-4 py-4 mb-2"
+                className="bg-[#1f1f1f] rounded-lg px-4 py-3 mb-2"
               >
                 <div className="flex items-center justify-between flex-row-reverse">
-                  <h1 className="text-[#ababab] font-semibold tracking-wide text-md">
+                  <h1 className="text-[#ababab] font-semibold tracking-wide text-sm">
                     {item.name}
                   </h1>
 
@@ -108,10 +108,10 @@ const CartInfo = ({ onShowHistory, isEditingOrder, onCancelEdit }) => {
                       onClick={() => handleDecrease(item.id, item.quantity)}
                       className="p-1 bg-[#2b2b2b] rounded text-[#ababab] hover:text-white"
                     >
-                      <AiOutlineMinus size={14} />
+                      <AiOutlineMinus size={12} />
                     </button>
 
-                    <span className="text-[#ababab] font-semibold">
+                    <span className="text-[#ababab] font-semibold text-sm">
                       x{item.quantity}
                     </span>
 
@@ -119,20 +119,20 @@ const CartInfo = ({ onShowHistory, isEditingOrder, onCancelEdit }) => {
                       onClick={() => handleIncrease(item.id, item.quantity)}
                       className="p-1 bg-[#2b2b2b] rounded text-[#ababab] hover:text-white"
                     >
-                      <AiOutlinePlus size={14} />
+                      <AiOutlinePlus size={12} />
                     </button>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between mt-3 flex-row-reverse">
-                  <p className="text-[#f5f5f5] text-md font-bold">
+                <div className="flex items-center justify-between mt-2 flex-row-reverse">
+                  <p className="text-[#f5f5f5] text-sm font-bold">
                     {item.price.toFixed(2)}
                   </p>
 
                   <RiDeleteBin2Fill
                     onClick={() => handleRemoveItem(item.id)}
                     className="text-[#ababab] cursor-pointer hover:text-red-500 transition-colors"
-                    size={20}
+                    size={18}
                   />
                 </div>
               </div>

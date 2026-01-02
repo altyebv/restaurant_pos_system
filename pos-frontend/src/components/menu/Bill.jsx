@@ -26,6 +26,7 @@ const Bill = ({
   const [orderInfo, setOrderInfo] = useState(null);
   const [showQR, setShowQR] = useState(false);
   const [autoPrint, setAutoPrint] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const handlePlaceOrder = async () => {
     if (!paymentMethod) {
@@ -38,6 +39,7 @@ const Bill = ({
       return;
     }
 
+    setIsProcessing(true);
     const payload = {
       bills: { 
         total: Number(total.toFixed(2)), 
@@ -58,7 +60,6 @@ const Bill = ({
       let saved;
       
       if (isEditingOrder && editingOrderId) {
-        // Editing existing order
         const editPayload = {
           items: payload.items,
           bills: payload.bills,
@@ -66,13 +67,12 @@ const Bill = ({
         };
         
         const res = await editOrder({ 
-          orderId: editingOrderId, 
+          orderId: editingOrderId,
           ...editPayload 
         });
         saved = res.data.data;
         enqueueSnackbar("تم تعديل الطلب بنجاح!", { variant: "success" });
       } else {
-        // Creating new order
         const res = await addOrder(payload);
         saved = res.data.data;
         enqueueSnackbar("تم حفظ الطلب!", { variant: "success" });
@@ -82,12 +82,10 @@ const Bill = ({
       setAutoPrint(true);
       setShowInvoice(true);
       
-      // Clear cart and reset state
       dispatch(removeAllItems());
       setPaymentMethod(null);
       setShowQR(false);
       
-      // Notify parent about success
       if (onOrderSuccess) {
         onOrderSuccess();
       }
@@ -97,14 +95,16 @@ const Bill = ({
         err?.response?.data?.message || "فشل حفظ الطلب", 
         { variant: "error" }
       );
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   return (
     <>
-      <div className="px-5 py-3">
-        {/* Bill Summary */}
-        <div className="space-y-2">
+      <div className="px-5 py-2">
+        {/* Bill Summary - Compact */}
+        <div className="space-y-1">
           <div className="flex items-center justify-between">
             <p className="text-xs text-[#ababab] font-medium">عناصر</p>
             <h1 className="text-[#f5f5f5] text-md font-bold">
@@ -127,30 +127,30 @@ const Bill = ({
           </div>
         </div>
 
-        {/* Editing Indicator */}
+        {/* Editing Indicator - Compact */}
         {isEditingOrder && (
-          <div className="px-5 mt-3">
+          <div className="mt-2">
             <div className="bg-yellow-900/30 border border-yellow-600 rounded p-2 text-center">
-              <div className="text-yellow-400 text-sm flex items-center justify-center gap-2">
-                <MdEdit size={16} />
-                <span>جاري تعديل الطلب {editingOrder?.orderNumber}</span>
+              <div className="text-yellow-400 text-xs flex items-center justify-center gap-1">
+                <MdEdit size={14} />
+                <span>تعديل {editingOrder?.orderNumber}</span>
               </div>
               <button
                 onClick={onCancelEdit}
                 className="text-red-400 hover:text-red-300 text-xs mt-1 underline"
               >
-                إلغاء التعديل
+                إلغاء
               </button>
             </div>
           </div>
         )}
 
-        {/* Payment Method Selection */}
-        <div className="px-5 mt-4">
-          <div className="flex items-center gap-3">
+        {/* Payment Method Selection - Compact */}
+        <div className="mt-3">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setPaymentMethod("cash")}
-              className={`px-4 py-3 w-full rounded-lg font-semibold transition-colors ${
+              className={`px-3 py-2 w-full rounded-lg font-semibold text-sm transition-colors ${
                 paymentMethod === "cash" 
                   ? "bg-[#383737] text-white" 
                   : "bg-[#1f1f1f] text-[#ababab]"
@@ -164,7 +164,7 @@ const Bill = ({
                 setPaymentMethod("bankak");
                 setShowQR(true);
               }}
-              className={`px-4 py-3 w-full rounded-lg font-semibold transition-colors ${
+              className={`px-3 py-2 w-full rounded-lg font-semibold text-sm transition-colors ${
                 paymentMethod === "bankak" 
                   ? "bg-[#383737] text-white" 
                   : "bg-[#1f1f1f] text-[#ababab]"
@@ -175,16 +175,25 @@ const Bill = ({
           </div>
         </div>
 
-        {/* Submit Button */}
-        <div className="px-5 mt-4">
+        {/* Submit Button - Compact */}
+        <div className="mt-3">
           <button
             onClick={handlePlaceOrder}
-            disabled={!paymentMethod || cartData.length === 0}
-            className="w-full bg-[#025cca] px-4 py-3 rounded-lg text-[#f5f5f5] font-semibold text-lg hover:bg-[#0246a0] transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            disabled={!paymentMethod || cartData.length === 0 || isProcessing}
+            className={`w-full py-2.5 rounded-lg text-[#f5f5f5] font-semibold text-base transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
+              !paymentMethod || cartData.length === 0 || isProcessing
+                ? 'bg-gray-600'
+                : 'bg-[#025cca] hover:bg-[#0246a0]'
+            }`}
           >
-            {isEditingOrder ? (
+            {isProcessing ? (
               <>
-                <MdEdit size={20} />
+                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+                جاري المعالجة...
+              </>
+            ) : isEditingOrder ? (
+              <>
+                <MdEdit size={18} />
                 حفظ التعديلات
               </>
             ) : (
